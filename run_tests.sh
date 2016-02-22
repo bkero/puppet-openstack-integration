@@ -14,6 +14,9 @@
 # under the License.
 
 export SCENARIO=${SCENARIO:-scenario001}
+export MANAGE_PUPPET_MODULES=${MANAGE_PUPPET_MODULES:-true}
+export MANAGE_REPOS=${MANAGE_REPOS:-true}
+export PUPPET_ARGS=${PUPPET_ARGS:-}
 export SCRIPT_DIR=$(cd `dirname $0` && pwd -P)
 source $SCRIPT_DIR/functions
 
@@ -34,9 +37,12 @@ fi
 if [ -e /usr/zuul-env/bin/zuul-cloner ] ; then
     /usr/zuul-env/bin/zuul-cloner --workspace /tmp --cache-dir /opt/git \
         git://git.openstack.org openstack/tempest
+else
+    # We're outside the gate, just do a regular git clone
+    git clone git://git.openstack.org/openstack/tempest /tmp/openstack/tempest
 fi
 
-PUPPET_ARGS="--detailed-exitcodes --verbose --color=false --debug"
+PUPPET_ARGS="${PUPPET_ARGS} --detailed-exitcodes --verbose --color=false --debug"
 
 function run_puppet() {
     local manifest=$1
@@ -58,7 +64,14 @@ elif is_fedora; then
     $SUDO yum install -y dstat puppet
 fi
 
-$SUDO ./install_modules.sh
+if [ "${MANAGE_PUPPET_MODULES}" = true ]; then
+    $SUDO ./install_modules.sh
+fi
+
+set +e
+if [ "${MANAGE_REPOS}" = true ]; then
+    $SUDO puppet apply $PUPPET_ARGS -e "include ::openstack_integration::repos"
+fi
 
 # use dstat to monitor system activity during integration testing
 if type "dstat" 2>/dev/null; then
